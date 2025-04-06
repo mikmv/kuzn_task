@@ -13,7 +13,6 @@ last_available_courses = []
 active_chats = set()
 
 
-
 def check_courses():
     try:
         response = requests.get(URL, timeout=10)
@@ -59,7 +58,7 @@ def check_updates():
                             bot.send_message(chat_id, mes)
                         except Exception as e:
                             print(f"Ошибка отправки сообщения в чат {chat_id}: {e}")
-                            active_chats.discard(chat_id)  # Удаляем неактивный чат
+                            active_chats.discard(chat_id)
 
                 last_available_courses = current_courses
         except Exception as e:
