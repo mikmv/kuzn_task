@@ -3,13 +3,15 @@ import time
 import requests
 from bs4 import BeautifulSoup
 from threading import Thread
+from telebot import types
 
-bot = telebot.TeleBot('7213095646:AAE2SqjNQUQ5xNG9lI0QzeRPkrvMh-tkwqE') 
+bot = telebot.TeleBot('7213095646:AAE2SqjNQUQ5xNG9lI0QzeRPkrvMh-tkwqE')
 check_time = 3600
 URL = 'https://sberstudent.ru/sberseasons-moscow/'
 
 last_available_courses = []
-notification_chat_id = None
+active_chats = set()
+
 
 
 def check_courses():
@@ -42,36 +44,56 @@ def check_courses():
 
 
 def check_updates():
-    global last_available_courses, notification_chat_id
+    global last_available_courses
     while True:
-        if notification_chat_id:
+        try:
             current_courses = check_courses()
 
             if current_courses != last_available_courses:
                 new_courses = set(current_courses) - set(last_available_courses)
 
-                if new_courses:
+                if new_courses and active_chats:
                     mes = "Появились новые направления!**\n\n" + "\n".join(f"• {course}" for course in new_courses)
-                    bot.send_message(notification_chat_id, text=mes)
+                    for chat_id in active_chats:
+                        try:
+                            bot.send_message(chat_id, mes)
+                        except Exception as e:
+                            print(f"Ошибка отправки сообщения в чат {chat_id}: {e}")
+                            active_chats.discard(chat_id)  # Удаляем неактивный чат
 
                 last_available_courses = current_courses
+        except Exception as e:
+            print(f"Ошибка в фоновом потоке: {e}")
 
         time.sleep(check_time)
 
 
-@bot.message_handler(commands=['курс', 'курсы', 'направление', 'направления', 'вакансия', 'вакансии'])
+@bot.message_handler(commands=['start'])
+def greeting(message):
+    active_chats.add(message.chat.id)
+    bot.send_message(message.chat.id,
+                     "Вы подписаны на уведомления о новых стажировках.\n Для просмотра текущих направлений отправьте /direction\n" \
+                     "Чтобы отписаться от уведомления, напишите /stop")
+
+
+@bot.message_handler(commands=['direction'])
 def main(message):
-    global notification_chat_id
-    # chat_id первого пользователя, который обратился к боту
-    if notification_chat_id is None:
-        notification_chat_id = message.chat.id
+
+    markup=types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton('Перейти на сайт с направлениями', url=URL))
 
     available_courses = check_courses()
     if available_courses:
         response = "Список доступных направлений:\n\n" + "\n".join(f"• {course}" for course in available_courses)
     else:
-        response = "Нет доступных курсов для записи."
-    bot.send_message(message.chat.id, response)
+        response = "Нет доступных направлений для записи."
+    bot.reply_to(message, response, reply_markup=markup)
+
+
+@bot.message_handler(commands=['stop'])
+def unsubscribe(message):
+    active_chats.discard(message.chat.id)
+    bot.send_message(message.chat.id, "Вы больше не будете получать уведомления о новых направлениях.\nДля подписки на уведомления, напишите /start")
 
 
 Thread(target=check_updates, daemon=True).start()
